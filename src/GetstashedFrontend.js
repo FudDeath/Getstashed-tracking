@@ -1,12 +1,8 @@
 /* global BigInt */
 import React, { useState, useEffect } from "react";
-import { ZkSendLinkBuilder, ZkSendLink } from "@mysten/zksend";
+import { ZkSendLinkBuilder } from "@mysten/zksend";
 import { SuiClient, getFullnodeUrl } from "@mysten/sui.js/client";
-import {
-    ConnectButton,
-    useCurrentAccount,
-    useSignAndExecuteTransaction,
-} from "@mysten/dapp-kit";
+import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { ClipboardIcon, DownloadIcon } from "lucide-react";
 import "./styles.css";
 
@@ -18,9 +14,7 @@ const GetstashedFrontend = () => {
     const [amountPerLink, setAmountPerLink] = useState(0.1);
     const [generatedLinks, setGeneratedLinks] = useState([]);
     const [trackedObjectIds, setTrackedObjectIds] = useState([]);
-    const [objectOwners, setObjectOwners] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
-    const [isFetchingOwners, setIsFetchingOwners] = useState(false);
     const [error, setError] = useState("");
     const [balance, setBalance] = useState(null);
 
@@ -28,36 +22,20 @@ const GetstashedFrontend = () => {
     const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
     const client = new SuiClient({ url: getFullnodeUrl("mainnet") });
 
-    // Fetch balance on load or wallet change
     useEffect(() => {
         const fetchBalance = async () => {
             if (currentAccount) {
                 try {
-                    const { totalBalance } = await client.getBalance({
-                        owner: currentAccount.address,
-                    });
+                    const { totalBalance } = await client.getBalance({ owner: currentAccount.address });
                     setBalance(Number(totalBalance) / Number(ONE_SUI));
                 } catch (error) {
                     console.error("Error fetching balance:", error);
                     setError("Failed to fetch balance.");
                 }
-            } else setBalance(null);
+            }
         };
         fetchBalance();
-    }, [currentAccount, client]);
-
-    const refreshBalance = async () => {
-        if (currentAccount) {
-            try {
-                const { totalBalance } = await client.getBalance({
-                    owner: currentAccount.address,
-                });
-                setBalance(Number(totalBalance) / Number(ONE_SUI));
-            } catch (error) {
-                console.error("Error refreshing balance:", error);
-            }
-        }
-    };
+    }, [currentAccount]);
 
     const createLinks = async () => {
         if (!currentAccount) {
@@ -65,26 +43,22 @@ const GetstashedFrontend = () => {
             return;
         }
 
-        const numLinksToCreate = Math.min(numLinks, MAX_LINKS);
         const totalSuiNeeded =
-            BigInt(Math.floor(amountPerLink * Number(ONE_SUI))) *
-            BigInt(numLinksToCreate);
+            BigInt(Math.floor(amountPerLink * Number(ONE_SUI))) * BigInt(Math.min(numLinks, MAX_LINKS));
 
-        if (BigInt(Math.floor(Number(balance) * Number(ONE_SUI))) < totalSuiNeeded) {
+        if (balance * ONE_SUI < totalSuiNeeded) {
             setError("Insufficient balance.");
             return;
         }
 
         setIsLoading(true);
         setError("");
+
         try {
             const links = [];
-            for (let i = 0; i < numLinksToCreate; i++) {
-                const link = new ZkSendLinkBuilder({
-                    sender: currentAccount.address,
-                    client,
-                });
-                link.addClaimableMist(BigInt(Math.floor(amountPerLink * Number(ONE_SUI))));
+            for (let i = 0; i < numLinks; i++) {
+                const link = new ZkSendLinkBuilder({ sender: currentAccount.address, client });
+                link.addClaimableMist(BigInt(amountPerLink * Number(ONE_SUI)));
                 links.push(link);
             }
 
@@ -97,15 +71,8 @@ const GetstashedFrontend = () => {
                         const objectIds = extractObjectIdsFromResult(result);
                         setTrackedObjectIds(objectIds);
                         setGeneratedLinks(
-                            links.map((link) =>
-                                link.getLink().replace("zksend.com", "getstashed.com")
-                            )
+                            links.map((link) => link.getLink().replace("zksend.com", "getstashed.com"))
                         );
-                        await refreshBalance();
-                    },
-                    onError: (err) => {
-                        console.error("Error executing transaction:", err);
-                        setError("An error occurred while creating links.");
                     },
                 }
             );
@@ -126,39 +93,26 @@ const GetstashedFrontend = () => {
         return objectIds;
     };
 
-    const fetchObjectOwners = async () => {
-        if (!trackedObjectIds.length) {
-            setError("No objects are being tracked.");
-            return;
-        }
+    const downloadLinksAndObjects = () => {
+        const data = generatedLinks
+            .map((link, index) => `Link: ${link}, Object ID: ${trackedObjectIds[index] || "N/A"}`)
+            .join("\n");
 
-        setIsFetchingOwners(true);
-        setError("");
-        const ownerDetails = [];
-        try {
-            for (const objectId of trackedObjectIds) {
-                const objectInfo = await client.getObject({
-                    id: objectId,
-                    options: { showOwner: true },
-                });
-                const owner = objectInfo?.data?.owner || "Unknown";
-                ownerDetails.push({ objectId, owner });
-            }
-            setObjectOwners(ownerDetails);
-        } catch (error) {
-            console.error("Error fetching object owners:", error);
-            setError("An error occurred while fetching object owners.");
-        } finally {
-            setIsFetchingOwners(false);
-        }
+        const blob = new Blob([data], { type: "text/plain" });
+        const url = URL.createObjectURL(blob);
+
+        const element = document.createElement("a");
+        element.href = url;
+        element.download = "links_and_objects.txt";
+        document.body.appendChild(element);
+        element.click();
+        document.body.removeChild(element);
     };
 
     return (
         <div className="min-h-screen bg-gray-100 p-4">
             <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-md p-6">
-                <h1 className="text-2xl font-bold mb-6 text-center">
-                    GetStashed Bulk Link Generator
-                </h1>
+                <h1 className="text-2xl font-bold mb-6 text-center">GetStashed Bulk Link Generator</h1>
 
                 <div className="mb-6 flex justify-center">
                     <ConnectButton />
@@ -183,6 +137,7 @@ const GetstashedFrontend = () => {
                         type="number"
                         value={numLinks}
                         onChange={(e) => setNumLinks(Math.min(parseInt(e.target.value) || 1, MAX_LINKS))}
+                        className="mt-1 w-full rounded border p-2"
                     />
                 </div>
                 <div>
@@ -192,21 +147,48 @@ const GetstashedFrontend = () => {
                         value={amountPerLink}
                         onChange={(e) => setAmountPerLink(parseFloat(e.target.value) || 0)}
                         step="0.1"
+                        className="mt-1 w-full rounded border p-2"
                     />
                 </div>
-                <button onClick={createLinks}>
+
+                <button
+                    onClick={createLinks}
+                    disabled={isLoading}
+                    className="w-full mt-4 bg-blue-500 text-white py-2 rounded hover:bg-blue-600"
+                >
                     {isLoading ? "Creating..." : "Create Links"}
                 </button>
 
-                <h2>Tracked Object Owners</h2>
-                <button onClick={fetchObjectOwners} disabled={isFetchingOwners}>
-                    {isFetchingOwners ? "Fetching Owners..." : "Fetch Object Owners"}
-                </button>
-                {objectOwners.map(({ objectId, owner }) => (
-                    <div key={objectId}>
-                        Object ID: {objectId} - Owner: {owner}
+                {error && <p className="mt-2 text-red-500">{error}</p>}
+
+                {generatedLinks.length > 0 && (
+                    <div className="mt-8">
+                        <h2 className="text-lg font-semibold">Generated Links and Objects</h2>
+                        <ul className="list-disc pl-5">
+                            {generatedLinks.map((link, index) => (
+                                <li key={index}>
+                                    Link:{" "}
+                                    <a
+                                        href={link}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-blue-500 underline"
+                                    >
+                                        {link}
+                                    </a>
+                                    <br />
+                                    Object ID: {trackedObjectIds[index] || "N/A"}
+                                </li>
+                            ))}
+                        </ul>
+                        <button
+                            onClick={downloadLinksAndObjects}
+                            className="mt-4 flex items-center bg-green-500 text-white py-2 px-4 rounded hover:bg-green-600"
+                        >
+                            <DownloadIcon className="w-5 h-5 mr-2" /> Download Links & Objects
+                        </button>
                     </div>
-                ))}
+                )}
             </div>
         </div>
     );
