@@ -1,13 +1,8 @@
-/* global BigInt */
 import React, { useState, useEffect } from "react";
 import { ZkSendLinkBuilder } from "@mysten/zksend";
 import { SuiClient, getFullnodeUrl } from "@mysten/sui.js/client";
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
 import { Download, Clipboard, ExternalLink } from "lucide-react";
-import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 
 const ONE_SUI = BigInt(1000000000);
 const MAX_LINKS = 100;
@@ -145,14 +140,12 @@ const GetstashedFrontend = () => {
 
     return (
         <div className="min-h-screen bg-gray-100 p-4">
-            <Card className="max-w-3xl mx-auto">
-                <CardHeader>
-                    <CardTitle className="text-2xl text-center">
+            <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-md">
+                <div className="p-6">
+                    <h1 className="text-2xl font-bold mb-6 text-center">
                         GetStashed Bulk Link Generator
-                    </CardTitle>
-                </CardHeader>
+                    </h1>
 
-                <CardContent>
                     <div className="mb-6 flex justify-center">
                         <ConnectButton />
                     </div>
@@ -176,12 +169,13 @@ const GetstashedFrontend = () => {
                             <label className="block text-sm font-medium mb-1">
                                 Number of Links (max {MAX_LINKS}):
                             </label>
-                            <Input
+                            <input
                                 type="number"
                                 value={numLinks}
                                 onChange={handleNumLinksChange}
                                 min={1}
                                 max={MAX_LINKS}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                         </div>
 
@@ -189,27 +183,28 @@ const GetstashedFrontend = () => {
                             <label className="block text-sm font-medium mb-1">
                                 Amount per Link (SUI):
                             </label>
-                            <Input
+                            <input
                                 type="number"
                                 value={amountPerLink}
                                 onChange={handleAmountChange}
                                 min={MIN_AMOUNT}
                                 step={MIN_AMOUNT}
+                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             />
                         </div>
 
-                        <Button
+                        <button
                             onClick={createLinks}
                             disabled={isLoading}
-                            className="w-full"
+                            className="w-full py-2 px-4 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                             {isLoading ? "Creating..." : "Create Links"}
-                        </Button>
+                        </button>
 
                         {error && (
-                            <Alert variant="destructive">
-                                <AlertDescription>{error}</AlertDescription>
-                            </Alert>
+                            <div className="p-4 bg-red-50 border-l-4 border-red-500 text-red-700">
+                                {error}
+                            </div>
                         )}
 
                         {generatedLinks.length > 0 && (
@@ -234,29 +229,27 @@ const GetstashedFrontend = () => {
                                                     Object ID: {trackedObjectIds[index] || "N/A"}
                                                 </p>
                                             </div>
-                                            <Button
-                                                variant="ghost"
-                                                size="sm"
+                                            <button
                                                 onClick={() => copyToClipboard(link)}
+                                                className="p-2 text-gray-500 hover:text-gray-700"
                                             >
                                                 <Clipboard className="w-4 h-4" />
-                                            </Button>
+                                            </button>
                                         </li>
                                     ))}
                                 </ul>
-                                <Button
+                                <button
                                     onClick={downloadLinksAndObjects}
-                                    className="w-full"
-                                    variant="outline"
+                                    className="w-full py-2 px-4 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center"
                                 >
                                     <Download className="w-4 h-4 mr-2" />
                                     Download Links & Objects
-                                </Button>
+                                </button>
                             </div>
                         )}
                     </div>
-                </CardContent>
-            </Card>
+                </div>
+            </div>
         </div>
     );
 };
