@@ -1,3 +1,4 @@
+/* global BigInt */
 import React, { useState, useEffect } from "react";
 import { ZkSendLinkBuilder } from "@mysten/zksend";
 import { SuiClient, getFullnodeUrl } from "@mysten/sui.js/client";
