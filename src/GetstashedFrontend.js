@@ -24,11 +24,9 @@ const GetstashedFrontend = () => {
 
     const fetchBalance = useCallback(async () => {
         if (!currentAccount) return;
-        
+
         try {
-            const { totalBalance } = await client.getBalance({ 
-                owner: currentAccount.address 
-            });
+            const { totalBalance } = await client.getBalance({ owner: currentAccount.address });
             setBalanceInMist(BigInt(totalBalance));
         } catch (err) {
             console.error("Error fetching balance:", err);
@@ -61,32 +59,29 @@ const GetstashedFrontend = () => {
     const extractObjectIdsFromResult = (result) => {
         console.log("Transaction result:", result);
 
+        const objectIds = [];
+
+        // Extract from 'created' field
         if (result?.effects?.created?.length > 0) {
-            return result.effects.created.map(obj => obj.objectId);
+            result.effects.created.forEach((item) => {
+                if (item.reference?.objectId) {
+                    objectIds.push(item.reference.objectId);
+                }
+            });
         }
 
-        // Fallback to checking events if created is not available
-        const createdObjects = result?.effects?.events?.filter(event => 
-            event.type === "created" || 
-            event.newObject || 
-            event.moveEvent?.type?.includes("Created")
-        );
+        // Fallback to events if 'created' is empty
+        const events = result?.effects?.events || [];
+        events.forEach((event) => {
+            if (event.newObject?.objectId) {
+                objectIds.push(event.newObject.objectId);
+            } else if (event.moveEvent?.fields?.object_id) {
+                objectIds.push(event.moveEvent.fields.object_id);
+            }
+        });
 
-        console.log("Created objects from events:", createdObjects);
-        
-        const objectIds = createdObjects?.map(event => 
-            event.objectId || event.newObject?.objectId
-        ).filter(Boolean) || [];
-
+        console.log("Extracted Object IDs:", objectIds);
         return objectIds;
-    };
-
-    const formatBalanceInSUI = (balanceInMist) => {
-        return (Number(balanceInMist) / Number(ONE_SUI)).toFixed(4);
-    };
-
-    const convertSUIToMist = (suiAmount) => {
-        return BigInt(Math.floor(suiAmount * Number(ONE_SUI)));
     };
 
     const createLinks = async () => {
@@ -95,9 +90,9 @@ const GetstashedFrontend = () => {
             return;
         }
 
-        const amountInMist = convertSUIToMist(amountPerLink);
-        const linksCount = BigInt(Math.min(numLinks, MAX_LINKS));
-        const totalMistNeeded = amountInMist * linksCount;
+        const amountInMist = BigInt(Math.floor(amountPerLink * Number(ONE_SUI)));
+        const linksCount = Math.min(numLinks, MAX_LINKS);
+        const totalMistNeeded = amountInMist * BigInt(linksCount);
 
         if (balanceInMist < totalMistNeeded) {
             setError("Insufficient balance for the requested operation.");
@@ -108,44 +103,35 @@ const GetstashedFrontend = () => {
         setError("");
 
         try {
-            const links = Array(numLinks).fill(null).map(() => {
-                const link = new ZkSendLinkBuilder({ 
-                    sender: currentAccount.address, 
-                    client 
+            const links = Array(linksCount)
+                .fill(null)
+                .map(() => {
+                    const link = new ZkSendLinkBuilder({ sender: currentAccount.address, client });
+                    link.addClaimableMist(amountInMist);
+                    return link;
                 });
-                link.addClaimableMist(amountInMist);
-                return link;
-            });
 
             const txBlock = await ZkSendLinkBuilder.createLinks({ links });
             console.log("Transaction block:", txBlock);
-            
+
             await signAndExecuteTransaction(
-                { transaction: txBlock },
+                { transaction: txBlock, options: { showObjectChanges: true } },
                 {
                     onSuccess: async (result) => {
                         console.log("Transaction success result:", result);
                         const objectIds = extractObjectIdsFromResult(result);
-                        console.log("Extracted object IDs:", objectIds);
-                        
-                        if (objectIds.length === 0) {
-                            console.warn("No object IDs found in transaction result");
-                        }
-                        
                         setTrackedObjectIds(objectIds);
                         setGeneratedLinks(
-                            links.map(link => 
+                            links.map((link) =>
                                 link.getLink().replace("zksend.com", "getstashed.com")
                             )
                         );
-
-                        // Refresh balance after successful transaction
                         await fetchBalance();
                     },
                     onError: (err) => {
                         console.error("Transaction failed:", err);
                         setError("Transaction failed. Please try again.");
-                    }
+                    },
                 }
             );
         } catch (err) {
@@ -158,7 +144,7 @@ const GetstashedFrontend = () => {
 
     const downloadLinksAndObjects = () => {
         const data = generatedLinks
-            .map((link, index) => 
+            .map((link, index) =>
                 `Link: ${link}\nObject ID: ${trackedObjectIds[index] || "N/A"}\n`
             )
             .join("\n");
@@ -168,125 +154,58 @@ const GetstashedFrontend = () => {
 
         const link = document.createElement("a");
         link.href = url;
-        link.download = `getstashed_links_${new Date().toISOString().split('T')[0]}.txt`;
+        link.download = `getstashed_links_${new Date().toISOString().split("T")[0]}.txt`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
         URL.revokeObjectURL(url);
     };
 
-    // ... (rest of the JSX remains the same)
     return (
         <div className="min-h-screen bg-gray-100 p-4">
-            <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-md">
-                <div className="p-6">
-                    <h1 className="text-2xl font-bold mb-6 text-center">
-                        GetStashed Bulk Link Generator
-                    </h1>
+            <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-md p-6">
+                <h1 className="text-2xl font-bold mb-6 text-center">GetStashed Bulk Link Generator</h1>
 
-                    <div className="mb-6 flex justify-center">
-                        <ConnectButton />
-                    </div>
-
-                    {currentAccount && (
-                        <div className="mb-6 text-center space-y-2">
-                            <p className="text-sm text-gray-600">
-                                Connected: 
-                                <span className="font-mono ml-2">
-                                    {`${currentAccount.address.slice(0, 6)}...${currentAccount.address.slice(-4)}`}
-                                </span>
-                            </p>
-                            <p className="text-sm font-medium">
-                                Balance: {formatBalanceInSUI(balanceInMist)} SUI
-                            </p>
-                        </div>
-                    )}
-
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium mb-1">
-                                Number of Links (max {MAX_LINKS}):
-                            </label>
-                            <input
-                                type="number"
-                                value={numLinks}
-                                onChange={handleNumLinksChange}
-                                min={1}
-                                max={MAX_LINKS}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium mb-1">
-                                Amount per Link (SUI):
-                            </label>
-                            <input
-                                type="number"
-                                value={amountPerLink}
-                                onChange={handleAmountChange}
-                                min={MIN_AMOUNT}
-                                step={MIN_AMOUNT}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                            />
-                        </div>
-
-                        <button
-                            onClick={createLinks}
-                            disabled={isLoading}
-                            className="w-full py-2 px-4 bg-blue-500 text-white rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                            {isLoading ? "Creating..." : "Create Links"}
-                        </button>
-
-                        {error && (
-                            <div className="p-4 bg-red-50 border-l-4 border-red-500 text-red-700">
-                                {error}
-                            </div>
-                        )}
-
-                        {generatedLinks.length > 0 && (
-                            <div className="mt-8 space-y-4">
-                                <h2 className="text-lg font-semibold">
-                                    Generated Links and Objects
-                                </h2>
-                                <ul className="space-y-4">
-                                    {generatedLinks.map((link, index) => (
-                                        <li key={index} className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
-                                            <div className="flex-1 break-all">
-                                                <a
-                                                    href={link}
-                                                    target="_blank"
-                                                    rel="noopener noreferrer"
-                                                    className="text-blue-500 hover:underline flex items-center"
-                                                >
-                                                    {link}
-                                                    <ExternalLink className="w-4 h-4 ml-1" />
-                                                </a>
-                                                <p className="text-sm text-gray-600 mt-1">
-                                                    Object ID: {trackedObjectIds[index] || "N/A"}
-                                                </p>
-                                            </div>
-                                            <button
-                                                onClick={() => copyToClipboard(link)}
-                                                className="p-2 text-gray-500 hover:text-gray-700"
-                                            >
-                                                <Clipboard className="w-4 h-4" />
-                                            </button>
-                                        </li>
-                                    ))}
-                                </ul>
-                                <button
-                                    onClick={downloadLinksAndObjects}
-                                    className="w-full py-2 px-4 border border-gray-300 rounded-md hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 flex items-center justify-center"
-                                >
-                                    <Download className="w-4 h-4 mr-2" />
-                                    Download Links & Objects
-                                </button>
-                            </div>
-                        )}
-                    </div>
+                <div className="mb-6 flex justify-center">
+                    <ConnectButton />
                 </div>
+
+                {currentAccount && (
+                    <div className="text-center mb-4">
+                        <p>Connected: {currentAccount.address}</p>
+                        <p>Balance: {(Number(balanceInMist) / Number(ONE_SUI)).toFixed(4)} SUI</p>
+                    </div>
+                )}
+
+                <div>
+                    <label>Number of Links:</label>
+                    <input type="number" value={numLinks} onChange={handleNumLinksChange} min={1} max={MAX_LINKS} />
+                    <label>Amount per Link (SUI):</label>
+                    <input type="number" value={amountPerLink} onChange={handleAmountChange} step={0.1} min={MIN_AMOUNT} />
+                </div>
+
+                <button onClick={createLinks} disabled={isLoading}>
+                    {isLoading ? "Creating..." : "Create Links"}
+                </button>
+
+                {generatedLinks.length > 0 && (
+                    <div>
+                        <h2>Generated Links and Objects</h2>
+                        <ul>
+                            {generatedLinks.map((link, index) => (
+                                <li key={index}>
+                                    <a href={link} target="_blank" rel="noopener noreferrer">
+                                        {link}
+                                    </a>{" "}
+                                    - Object ID: {trackedObjectIds[index] || "N/A"}
+                                </li>
+                            ))}
+                        </ul>
+                        <button onClick={downloadLinksAndObjects}>Download Links & Objects</button>
+                    </div>
+                )}
+
+                {error && <p className="text-red-500 mt-4">{error}</p>}
             </div>
         </div>
     );
