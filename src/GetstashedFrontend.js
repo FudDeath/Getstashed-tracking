@@ -59,10 +59,26 @@ const GetstashedFrontend = () => {
     };
 
     const extractObjectIdsFromResult = (result) => {
-        const events = result?.effects?.events || [];
-        return events
-            .filter(event => event.newObject)
-            .map(event => event.newObject.objectId);
+        console.log("Transaction result:", result);
+
+        if (result?.effects?.created?.length > 0) {
+            return result.effects.created.map(obj => obj.objectId);
+        }
+
+        // Fallback to checking events if created is not available
+        const createdObjects = result?.effects?.events?.filter(event => 
+            event.type === "created" || 
+            event.newObject || 
+            event.moveEvent?.type?.includes("Created")
+        );
+
+        console.log("Created objects from events:", createdObjects);
+        
+        const objectIds = createdObjects?.map(event => 
+            event.objectId || event.newObject?.objectId
+        ).filter(Boolean) || [];
+
+        return objectIds;
     };
 
     const formatBalanceInSUI = (balanceInMist) => {
@@ -102,18 +118,29 @@ const GetstashedFrontend = () => {
             });
 
             const txBlock = await ZkSendLinkBuilder.createLinks({ links });
+            console.log("Transaction block:", txBlock);
             
             await signAndExecuteTransaction(
                 { transaction: txBlock },
                 {
                     onSuccess: (result) => {
+                        console.log("Transaction success result:", result);
                         const objectIds = extractObjectIdsFromResult(result);
+                        console.log("Extracted object IDs:", objectIds);
+                        
+                        if (objectIds.length === 0) {
+                            console.warn("No object IDs found in transaction result");
+                        }
+                        
                         setTrackedObjectIds(objectIds);
                         setGeneratedLinks(
                             links.map(link => 
                                 link.getLink().replace("zksend.com", "getstashed.com")
                             )
                         );
+
+                        // Refresh balance after successful transaction
+                        fetchBalance();
                     },
                     onError: (err) => {
                         console.error("Transaction failed:", err);
