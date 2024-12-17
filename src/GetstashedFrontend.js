@@ -16,7 +16,7 @@ const GetstashedFrontend = () => {
     const [trackedObjectIds, setTrackedObjectIds] = useState([]);
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState("");
-    const [balance, setBalance] = useState(BigInt(0));
+    const [balanceInMist, setBalanceInMist] = useState(BigInt(0));
 
     const currentAccount = useCurrentAccount();
     const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
@@ -30,7 +30,7 @@ const GetstashedFrontend = () => {
                 const { totalBalance } = await client.getBalance({ 
                     owner: currentAccount.address 
                 });
-                setBalance(BigInt(totalBalance));
+                setBalanceInMist(BigInt(totalBalance));
             } catch (err) {
                 console.error("Error fetching balance:", err);
                 setError("Failed to fetch balance. Please try again.");
@@ -65,8 +65,12 @@ const GetstashedFrontend = () => {
             .map(event => event.newObject.objectId);
     };
 
-    const formatBalance = (balanceInMist) => {
+    const formatBalanceInSUI = (balanceInMist) => {
         return (Number(balanceInMist) / Number(ONE_SUI)).toFixed(4);
+    };
+
+    const convertSUIToMist = (suiAmount) => {
+        return BigInt(Math.floor(suiAmount * Number(ONE_SUI)));
     };
 
     const createLinks = async () => {
@@ -75,10 +79,11 @@ const GetstashedFrontend = () => {
             return;
         }
 
-        const amountInMist = BigInt(Math.floor(amountPerLink * Number(ONE_SUI)));
-        const totalSuiNeeded = amountInMist * BigInt(Math.min(numLinks, MAX_LINKS));
+        const amountInMist = convertSUIToMist(amountPerLink);
+        const linksCount = BigInt(Math.min(numLinks, MAX_LINKS));
+        const totalMistNeeded = amountInMist * linksCount;
 
-        if (balance < totalSuiNeeded) {
+        if (balanceInMist < totalMistNeeded) {
             setError("Insufficient balance for the requested operation.");
             return;
         }
@@ -164,7 +169,7 @@ const GetstashedFrontend = () => {
                                 </span>
                             </p>
                             <p className="text-sm font-medium">
-                                Balance: {formatBalance(balance)} SUI
+                                Balance: {formatBalanceInSUI(balanceInMist)} SUI
                             </p>
                         </div>
                     )}
