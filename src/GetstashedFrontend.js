@@ -1,5 +1,5 @@
 /* global BigInt */
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { ZkSendLinkBuilder } from "@mysten/zksend";
 import { SuiClient, getFullnodeUrl } from "@mysten/sui.js/client";
 import { ConnectButton, useCurrentAccount, useSignAndExecuteTransaction } from "@mysten/dapp-kit";
@@ -22,23 +22,23 @@ const GetstashedFrontend = () => {
     const { mutate: signAndExecuteTransaction } = useSignAndExecuteTransaction();
     const client = new SuiClient({ url: getFullnodeUrl("mainnet") });
 
-    useEffect(() => {
-        const fetchBalance = async () => {
-            if (!currentAccount) return;
-            
-            try {
-                const { totalBalance } = await client.getBalance({ 
-                    owner: currentAccount.address 
-                });
-                setBalanceInMist(BigInt(totalBalance));
-            } catch (err) {
-                console.error("Error fetching balance:", err);
-                setError("Failed to fetch balance. Please try again.");
-            }
-        };
-
-        fetchBalance();
+    const fetchBalance = useCallback(async () => {
+        if (!currentAccount) return;
+        
+        try {
+            const { totalBalance } = await client.getBalance({ 
+                owner: currentAccount.address 
+            });
+            setBalanceInMist(BigInt(totalBalance));
+        } catch (err) {
+            console.error("Error fetching balance:", err);
+            setError("Failed to fetch balance. Please try again.");
+        }
     }, [currentAccount, client]);
+
+    useEffect(() => {
+        fetchBalance();
+    }, [fetchBalance]);
 
     const handleNumLinksChange = (e) => {
         const value = parseInt(e.target.value) || 1;
@@ -123,7 +123,7 @@ const GetstashedFrontend = () => {
             await signAndExecuteTransaction(
                 { transaction: txBlock },
                 {
-                    onSuccess: (result) => {
+                    onSuccess: async (result) => {
                         console.log("Transaction success result:", result);
                         const objectIds = extractObjectIdsFromResult(result);
                         console.log("Extracted object IDs:", objectIds);
@@ -140,7 +140,7 @@ const GetstashedFrontend = () => {
                         );
 
                         // Refresh balance after successful transaction
-                        fetchBalance();
+                        await fetchBalance();
                     },
                     onError: (err) => {
                         console.error("Transaction failed:", err);
@@ -175,6 +175,7 @@ const GetstashedFrontend = () => {
         URL.revokeObjectURL(url);
     };
 
+    // ... (rest of the JSX remains the same)
     return (
         <div className="min-h-screen bg-gray-100 p-4">
             <div className="max-w-3xl mx-auto bg-white rounded-lg shadow-md">
